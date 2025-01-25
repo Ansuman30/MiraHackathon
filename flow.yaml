@@ -1,0 +1,78 @@
+# Flow specification version
+version: "0.1.0"                                    # Flow specification version
+
+metadata:
+  flow_type: "compound"                             # Specifies this as a compound flow
+  name: "opiniontweetgenerator"                            # Unique identifier
+  description: "It takes json file news article then creates a opinion tweet based on that"
+  author: "ansu"                           # Your Mira Flows username
+  tags: [writing, ai]                         # Discovery keywords
+  private: false                                     # Access control setting
+
+inputs:
+  json_data:                                    # Primary input parameter
+    type: string
+    description: "Json format string containing news article"
+    required: true
+    example: "Search from tavily"
+  
+
+workflow:
+  # First stage: Content Moderation
+  json_to_plaintext: # First FLow
+    type: "custom"
+    inputs:
+      json_data: ${inputs.json_data}
+    model:
+      provider: "anthropic"
+      name: "claude-3.5-sonnet"
+    prompt: |
+      You will be given a JSON format string and this is the string {json_data} containing multiple news articles. Your task is to:
+      - Identify and separate news articles based on unique content and links.
+      - Avoid duplicates and merge articles if they contain highly similar information.
+      - Output the cleaned news data as plain text with the provided link and separated news to be distinguishable to one another.
+      - Ensure that no redundant or repeated news articles appear in the final result.
+      - Keep only one version of news articles if they are highly similar.
+
+  # Parallel stage: Content Enhancement
+  opinion_making: #Second FLow
+    type: "custom"
+    depends_on: [json_to_plaintext]
+    inputs:
+      topic: ${json_to_plaintext.output}
+    model:
+      provider: "anthropic"
+      name: "claude-3.5-sonnet"
+    prompt: |
+      You are given with some context {topic}. Your task is to:
+      - Create a human like opinion on the given context.
+      -You should stick to your opinion and present the context in such a way that you are commentating on the topic and provide the url link present in {topic} from which you have made ur opinion.
+    
+
+  # Final stage: Review and Combine
+  tweet_generator:
+    type: "custom"
+    depends_on: [opinion_making]
+    inputs:
+      topic: ${opinion_making.output}
+    model:
+      provider: "anthropic"
+      name: "claude-3.5-sonnet"
+    prompt: |
+      You are given with some context {topic}. Your task is to:
+      - Create a short and simple tweet based on the context.
+      -It should look like as it is written by human
+      -Provide the link present in the context in the tweet as well.
+      -Use appropriate hashtag
+output:
+  value:
+    - ${tweet_generator.output}
+
+readme: |
+  ### Workflow Overview:
+  1. **jsontoplaintext Flow**:  with the provided string json data format and produces in plain text
+  2. **opinionmaking Flow**: Runs after first flow and takes output of first flow as input,  give opinion about the context
+  3. **tweetgenerator Flow**: Runs after second flow and takes output of second flow as input, gives opinion tweet based on the context with proper hashtag
+
+  ### Outputs:
+  - Combined outputs from all flows are returned in order
